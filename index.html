@@ -207,11 +207,44 @@ canvas.addEventListener("click", e=>{
 });
 
 // ---------------- Экспорт DXF ----------------
-function exportContourToDXF(c){
-  let dxf="0\nSECTION\n2\nENTITIES\n";
-  if(c.vertices) c.vertices.forEach(v=>{ dxf+=`0\nVERTEX\n10\n${v.x}\n20\n${v.y}\n`; });
-  else if(c.controlPoints) c.controlPoints.forEach(v=>{ dxf+=`0\nVERTEX\n10\n${v.x}\n20\n${v.y}\n`; });
-  dxf+="0\nENDSEC\n0\nEOF";
+function exportContourToDXF(c) {
+  let dxf = "0\nSECTION\n2\nHEADER\n";
+  // Можно добавить заголовочные параметры, если нужно
+  dxf += "0\nENDSEC\n";
+
+  dxf += "0\nSECTION\n2\nENTITIES\n";
+
+  if (c.vertices && c.vertices.length) {
+    // Создаём полилинию
+    dxf += "0\nLWPOLYLINE\n8\n0\n"; // уровень слоя 0 (можно изменить)
+    dxf += `70\n1\n`; // флаг: замкнутая или нет (1 — замкнутая, 0 — открытая)
+    dxf += `8\n0\n`; // уровень (слой)
+    // Опционально можно указать другие параметры
+
+    c.vertices.forEach(v => {
+      dxf += `0\nVERTEX\n10\n${v.x}\n20\n${v.y}\n`;
+    });
+    // Если замкнутая, добавляем завершающий тег
+    // В данном случае ломая структуру, секция заканчивается
+  } else if (c.controlPoints && c.controlPoints.length) {
+    // Одинаковый подход для кривых, например, SPLINE
+    // Для упрощения пример аналогичный
+    // Или можно реализовать отдельно для других типов
+    // Но тут пример для кривых — обычно это сложнее (с кривыми Безье), 
+    // требуют дополнительных данных
+  } else if (c.type === "LINE" && c.vertices) {
+    // Для линии лучше экспортировать как LINE
+    const [p1, p2] = c.vertices;
+    dxf += `0\nLINE\n8\n0\n`;
+    dxf += `10\n${p1.x}\n20\n${p1.y}\n`;
+    dxf += `11\n${p2.x}\n21\n${p2.y}\n`;
+  } else if (c.type === "CIRCLE") {
+    dxf += `0\nCIRCLE\n8\n0\n`;
+    dxf += `10\n${c.center.x}\n20\n${c.center.y}\n`;
+    dxf += `40\n${c.radius}\n`;
+  }
+
+  dxf += "0\nENDSEC\n0\nEOF\n";
   return dxf;
 }
 
