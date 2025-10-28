@@ -212,51 +212,79 @@ function exportContourToDXF(c) {
 
   // --- HEADER ---
   dxf += "0\nSECTION\n2\nHEADER\n";
-  dxf += "9\n$ACADVER\n1\nAC1015\n"; // версия DXF (AutoCAD 2000)
+  dxf += "9\n$ACADVER\n1\nAC1015\n"; // версия DXF 2000
   dxf += "0\nENDSEC\n";
 
   // --- ENTITIES ---
   dxf += "0\nSECTION\n2\nENTITIES\n";
 
-  // Унифицируем точки
-  const verts = c.vertices || c.points || [];
+  const verts = c.vertices || c.points || c.vertexes || c.controlPoints || [];
 
-  if ((c.type === "LWPOLYLINE" || c.type === "POLYLINE") && verts.length) {
-    dxf += "0\nLWPOLYLINE\n8\n0\n";      // слой 0
-    dxf += `90\n${verts.length}\n`;      // количество вершин
-    dxf += `70\n${c.shape ? 1 : 0}\n`;   // замкнута или нет
+  // --- POLYLINE / POLYGON / LWPOLYLINE ---
+  if ((["LWPOLYLINE", "POLYLINE", "POLYGON"].includes(c.type)) && verts.length) {
+    dxf += "0\nLWPOLYLINE\n8\n0\n";
+    dxf += `90\n${verts.length}\n`;
+    dxf += `70\n${c.closed || c.shape ? 1 : 0}\n`;
     verts.forEach(v => {
       dxf += `10\n${v.x}\n20\n${v.y}\n`;
-      if (v.bulge !== undefined) dxf += `42\n${v.bulge}\n`;
     });
 
+  // --- LINE ---
   } else if (c.type === "LINE" && verts.length >= 2) {
     const [p1, p2] = verts;
     dxf += "0\nLINE\n8\n0\n";
     dxf += `10\n${p1.x}\n20\n${p1.y}\n`;
     dxf += `11\n${p2.x}\n21\n${p2.y}\n`;
 
+  // --- CIRCLE ---
   } else if (c.type === "CIRCLE" && c.center && c.radius !== undefined) {
     dxf += "0\nCIRCLE\n8\n0\n";
     dxf += `10\n${c.center.x}\n20\n${c.center.y}\n`;
     dxf += `40\n${c.radius}\n`;
 
+  // --- ARC ---
   } else if (c.type === "ARC" && c.center && c.radius !== undefined) {
     dxf += "0\nARC\n8\n0\n";
     dxf += `10\n${c.center.x}\n20\n${c.center.y}\n`;
     dxf += `40\n${c.radius}\n`;
-    if (c.startAngle !== undefined) dxf += `50\n${c.startAngle}\n`;
-    if (c.endAngle !== undefined) dxf += `51\n${c.endAngle}\n`;
+    dxf += `50\n${c.startAngle || 0}\n51\n${c.endAngle || 0}\n`;
 
-  } else {
-    // fallback — если неизвестный тип, но есть точки
-    if (verts.length > 1) {
-      dxf += "0\nLWPOLYLINE\n8\n0\n";
-      dxf += `90\n${verts.length}\n70\n0\n`;
-      verts.forEach(v => {
-        dxf += `10\n${v.x}\n20\n${v.y}\n`;
-      });
+  // --- ELLIPSE ---
+  } else if (c.type === "ELLIPSE" && c.center && c.majorAxisEndPoint) {
+    dxf += "0\nELLIPSE\n8\n0\n";
+    dxf += `10\n${c.center.x}\n20\n${c.center.y}\n30\n${c.center.z || 0}\n`;
+    dxf += `11\n${c.majorAxisEndPoint.x}\n21\n${c.majorAxisEndPoint.y}\n31\n${c.majorAxisEndPoint.z || 0}\n`;
+    dxf += `40\n${c.axisRatio || 1}\n`;
+
+  // --- SPLINE ---
+  } else if (c.type === "SPLINE" && c.controlPoints?.length) {
+    dxf += "0\nSPLINE\n8\n0\n";
+    dxf += "70\n8\n"; // NURBS флаг
+    dxf += `71\n${c.degreeOfSplineCurve || 3}\n`;
+    dxf += `72\n${(c.knotValues?.length) || 0}\n`;
+    dxf += `73\n${c.controlPoints.length}\n`;
+    dxf += `74\n${c.numberOfFitPoints || 0}\n`;
+
+    // Узлы
+    if (c.knotValues) {
+      for (let k of c.knotValues) dxf += `40\n${k}\n`;
     }
+
+    // Контрольные точки
+    for (let p of c.controlPoints) {
+      dxf += `10\n${p.x}\n20\n${p.y}\n30\n${p.z || 0}\n`;
+    }
+
+  // --- 3DFACE (редкий случай) ---
+  } else if (c.type === "3DFACE" && verts.length >= 3) {
+    dxf += "0\n3DFACE\n8\n0\n";
+    verts.forEach((v, i) => {
+      dxf += `10${i}\n${v.x}\n20${i}\n${v.y}\n30${i}\n${v.z || 0}\n`;
+    });
+
+  // --- FALLBACK ---
+  } else {
+    console.warn("❗ Неизвестный или пустой контур:", c.type, c);
   }
 
   // --- END ---
