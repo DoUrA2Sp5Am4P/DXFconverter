@@ -209,62 +209,60 @@ canvas.addEventListener("click", e=>{
 // ---------------- Экспорт DXF ----------------
 function exportContourToDXF(c) {
   let dxf = "";
-  // Minimal header (можно расширить при необходимости)
-  dxf += "0\nSECTION\n2\nHEADER\n0\nENDSEC\n";
 
+  // --- HEADER ---
+  dxf += "0\nSECTION\n2\nHEADER\n";
+  dxf += "9\n$ACADVER\n1\nAC1015\n"; // версия DXF (AutoCAD 2000)
+  dxf += "0\nENDSEC\n";
+
+  // --- ENTITIES ---
   dxf += "0\nSECTION\n2\nENTITIES\n";
 
-  if (c.type === "LWPOLYLINE" || (c.vertices && c.type === "LWPOLYLINE")) {
-    // LWPOLYLINE: координаты задаются прямо группами 10/20, не как отдельные VERTEX
-    const verts = c.vertices || [];
-    dxf += "0\nLWPOLYLINE\n8\n0\n";               // layer 0
-    dxf += `90\n${verts.length}\n`;             // number of vertices (90 применяется в некоторых версиях)
-    // 70 — flags: bit1 = closed (1) или open (0)
-    const closedFlag = c.shape ? 1 : 0;
-    dxf += `70\n${closedFlag}\n`;
-    // Записываем вершины как пары 10/20
+  // Унифицируем точки
+  const verts = c.vertices || c.points || [];
+
+  if ((c.type === "LWPOLYLINE" || c.type === "POLYLINE") && verts.length) {
+    dxf += "0\nLWPOLYLINE\n8\n0\n";      // слой 0
+    dxf += `90\n${verts.length}\n`;      // количество вершин
+    dxf += `70\n${c.shape ? 1 : 0}\n`;   // замкнута или нет
     verts.forEach(v => {
       dxf += `10\n${v.x}\n20\n${v.y}\n`;
-      // При необходимости можно добавить 42 (bulge) или другие параметры
       if (v.bulge !== undefined) dxf += `42\n${v.bulge}\n`;
     });
-    // для LWPOLYLINE дополнительных SEQEND не нужно
-  } else if (c.type === "POLYLINE" && c.vertices && c.vertices.length) {
-    // Старый POLYLINE формат: POLYLINE -> N * VERTEX -> SEQEND
-    dxf += "0\nPOLYLINE\n8\n0\n66\n1\n70\n0\n"; // 66=hasvertex, 70 — flags
-    c.vertices.forEach(v => {
-      dxf += "0\nVERTEX\n8\n0\n";
-      dxf += `10\n${v.x}\n20\n${v.y}\n`;
-    });
-    dxf += "0\nSEQEND\n8\n0\n";
-  } else if (c.type === "LINE" && c.vertices && c.vertices.length >= 2) {
-    const [p1, p2] = c.vertices;
+
+  } else if (c.type === "LINE" && verts.length >= 2) {
+    const [p1, p2] = verts;
     dxf += "0\nLINE\n8\n0\n";
     dxf += `10\n${p1.x}\n20\n${p1.y}\n`;
     dxf += `11\n${p2.x}\n21\n${p2.y}\n`;
-  } else if (c.type === "CIRCLE" && c.center && (c.radius !== undefined)) {
+
+  } else if (c.type === "CIRCLE" && c.center && c.radius !== undefined) {
     dxf += "0\nCIRCLE\n8\n0\n";
     dxf += `10\n${c.center.x}\n20\n${c.center.y}\n`;
     dxf += `40\n${c.radius}\n`;
+
+  } else if (c.type === "ARC" && c.center && c.radius !== undefined) {
+    dxf += "0\nARC\n8\n0\n";
+    dxf += `10\n${c.center.x}\n20\n${c.center.y}\n`;
+    dxf += `40\n${c.radius}\n`;
+    if (c.startAngle !== undefined) dxf += `50\n${c.startAngle}\n`;
+    if (c.endAngle !== undefined) dxf += `51\n${c.endAngle}\n`;
+
   } else {
-    // fallback: если есть vertices, экспортируем как LWPOLYLINE по умолчанию
-    if (c.vertices && c.vertices.length) {
-      const verts = c.vertices;
+    // fallback — если неизвестный тип, но есть точки
+    if (verts.length > 1) {
       dxf += "0\nLWPOLYLINE\n8\n0\n";
-      dxf += `90\n${verts.length}\n`;
-      dxf += `70\n${c.shape ? 1 : 0}\n`;
+      dxf += `90\n${verts.length}\n70\n0\n`;
       verts.forEach(v => {
         dxf += `10\n${v.x}\n20\n${v.y}\n`;
       });
-    } else {
-      // ничего подходящего — пропускаем
     }
   }
 
+  // --- END ---
   dxf += "0\nENDSEC\n0\nEOF\n";
   return dxf;
 }
-
 
 // ---------------- Отправка через COM ----------------
 sendBtn.addEventListener("click", async ()=>{
